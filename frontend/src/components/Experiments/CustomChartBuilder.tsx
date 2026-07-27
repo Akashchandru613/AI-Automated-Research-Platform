@@ -4,51 +4,64 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import html2canvas from 'html2canvas';
+import type { ExperimentRawData } from '../../types/api';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
-export default function CustomChartBuilder({ rawData }) {
-  const [chartType, setChartType] = useState('scatter');
+type ChartType = 'scatter' | 'line' | 'bar' | 'pie';
+
+interface RowObject {
+  [column: string]: unknown;
+}
+
+interface AggregatedRow {
+  name: string;
+  count: number;
+  [valueColumn: string]: string | number;
+}
+
+interface CustomChartBuilderProps {
+  rawData: ExperimentRawData | null;
+}
+
+export default function CustomChartBuilder({ rawData }: CustomChartBuilderProps) {
+  const [chartType, setChartType] = useState<ChartType>('scatter');
   const [xCol, setXCol] = useState('');
   const [yCol, setYCol] = useState('');
   const [groupCol, setGroupCol] = useState('');
   const [pubMode, setPubMode] = useState(false);
-  const chartRef = useRef();
+  const chartRef = useRef<HTMLDivElement>(null);
 
-  const columns = rawData?.columns || [];
+  const columns = useMemo(() => rawData?.columns ?? [], [rawData]);
   const numericCols = useMemo(() => {
     if (!rawData?.rows?.length || !rawData?.dtypes) return columns;
-    return columns.filter(c => {
+    return columns.filter((c) => {
       const dtype = rawData.dtypes[c] || '';
       return dtype.includes('int') || dtype.includes('float');
     });
   }, [rawData, columns]);
 
-  const categoricalCols = useMemo(() => {
-    return columns.filter(c => !numericCols.includes(c));
-  }, [columns, numericCols]);
-
   // Build row objects from rawData
-  const rowObjects = useMemo(() => {
+  const rowObjects = useMemo<RowObject[]>(() => {
     if (!rawData?.rows?.length) return [];
-    return rawData.rows.map(row => {
-      const obj = {};
+    return rawData.rows.map((row) => {
+      const obj: RowObject = {};
       columns.forEach((col, i) => { obj[col] = row[i]; });
       return obj;
     });
   }, [rawData, columns]);
 
   // For bar/pie: aggregate by group column
-  const aggregatedData = useMemo(() => {
+  const aggregatedData = useMemo<AggregatedRow[]>(() => {
     if (!groupCol || !yCol || !rowObjects.length) return [];
-    const groups = {};
-    rowObjects.forEach(row => {
+    const groups: Record<string, { name: string; values: number[] }> = {};
+    rowObjects.forEach((row) => {
       const key = String(row[groupCol] ?? 'Unknown');
       if (!groups[key]) groups[key] = { name: key, values: [] };
       const val = Number(row[yCol]);
       if (!isNaN(val)) groups[key].values.push(val);
     });
-    return Object.values(groups).map(g => ({
+    return Object.values(groups).map((g) => ({
       name: g.name,
       [yCol]: g.values.length ? +(g.values.reduce((a, b) => a + b, 0) / g.values.length).toFixed(2) : 0,
       count: g.values.length,
@@ -73,7 +86,7 @@ export default function CustomChartBuilder({ rawData }) {
   return (
     <div className="chart-builder">
       <div className="chart-controls">
-        <select value={chartType} onChange={e => setChartType(e.target.value)}>
+        <select value={chartType} onChange={(e) => setChartType(e.target.value as ChartType)}>
           <option value="scatter">Scatter Plot</option>
           <option value="line">Line Chart</option>
           <option value="bar">Bar Chart (grouped avg)</option>
@@ -82,32 +95,32 @@ export default function CustomChartBuilder({ rawData }) {
 
         {showScatterLine && (
           <>
-            <select value={xCol} onChange={e => setXCol(e.target.value)}>
+            <select value={xCol} onChange={(e) => setXCol(e.target.value)}>
               <option value="">X axis</option>
-              {numericCols.map(c => <option key={c} value={c}>{c}</option>)}
+              {numericCols.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <select value={yCol} onChange={e => setYCol(e.target.value)}>
+            <select value={yCol} onChange={(e) => setYCol(e.target.value)}>
               <option value="">Y axis</option>
-              {numericCols.map(c => <option key={c} value={c}>{c}</option>)}
+              {numericCols.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </>
         )}
 
         {showGrouped && (
           <>
-            <select value={groupCol} onChange={e => setGroupCol(e.target.value)}>
+            <select value={groupCol} onChange={(e) => setGroupCol(e.target.value)}>
               <option value="">Group by</option>
-              {columns.map(c => <option key={c} value={c}>{c}</option>)}
+              {columns.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <select value={yCol} onChange={e => setYCol(e.target.value)}>
+            <select value={yCol} onChange={(e) => setYCol(e.target.value)}>
               <option value="">Value column</option>
-              {numericCols.map(c => <option key={c} value={c}>{c}</option>)}
+              {numericCols.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </>
         )}
 
         <label className="toggle-label">
-          <input type="checkbox" checked={pubMode} onChange={e => setPubMode(e.target.checked)} />
+          <input type="checkbox" checked={pubMode} onChange={(e) => setPubMode(e.target.checked)} />
           Publication mode
         </label>
         <button className="btn btn-secondary btn-sm" onClick={exportPNG}>Export PNG</button>
@@ -120,9 +133,9 @@ export default function CustomChartBuilder({ rawData }) {
               {!pubMode && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
               <XAxis dataKey="x" name={xCol} type="number" fontSize={12} label={{ value: xCol, position: 'bottom', offset: 20 }} />
               <YAxis dataKey="y" name={yCol} type="number" fontSize={12} label={{ value: yCol, angle: -90, position: 'insideLeft', offset: -5 }} />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} formatter={(val) => val?.toFixed(2)} />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} formatter={(val) => Number(val)?.toFixed(2)} />
               <Scatter
-                data={rowObjects.map(r => ({ x: Number(r[xCol]), y: Number(r[yCol]) })).filter(d => !isNaN(d.x) && !isNaN(d.y))}
+                data={rowObjects.map((r) => ({ x: Number(r[xCol]), y: Number(r[yCol]) })).filter((d) => !isNaN(d.x) && !isNaN(d.y))}
                 fill="#6366f1"
                 fillOpacity={0.7}
               />
@@ -133,13 +146,16 @@ export default function CustomChartBuilder({ rawData }) {
         {chartType === 'line' && xCol && yCol && (
           <ResponsiveContainer width="100%" height={400}>
             <LineChart
-              data={rowObjects.map(r => ({ [xCol]: Number(r[xCol]), [yCol]: Number(r[yCol]) })).filter(d => !isNaN(d[xCol]) && !isNaN(d[yCol])).sort((a, b) => a[xCol] - b[xCol])}
+              data={rowObjects
+                .map((r) => ({ [xCol]: Number(r[xCol]), [yCol]: Number(r[yCol]) }))
+                .filter((d) => !isNaN(d[xCol]) && !isNaN(d[yCol]))
+                .sort((a, b) => a[xCol] - b[xCol])}
               margin={{ top: 10, right: 20, bottom: 40, left: 20 }}
             >
               {!pubMode && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
               <XAxis dataKey={xCol} fontSize={12} label={{ value: xCol, position: 'bottom', offset: 20 }} />
               <YAxis fontSize={12} label={{ value: yCol, angle: -90, position: 'insideLeft', offset: -5 }} />
-              <Tooltip formatter={(val) => val?.toFixed(2)} />
+              <Tooltip formatter={(val) => Number(val)?.toFixed(2)} />
               <Line dataKey={yCol} stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -168,7 +184,7 @@ export default function CustomChartBuilder({ rawData }) {
                 nameKey="name"
                 cx="50%" cy="50%"
                 outerRadius={140}
-                label={({ name, count }) => `${name} (${count})`}
+                label={(props: { name?: string; count?: number }) => `${props.name} (${props.count})`}
               >
                 {aggregatedData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>

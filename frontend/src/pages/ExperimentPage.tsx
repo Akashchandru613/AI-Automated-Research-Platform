@@ -17,20 +17,32 @@ import ReportViewer from '../components/Reports/ReportViewer';
 import { createBookmark } from '../api/bookmarks';
 import { ArrowLeft, BarChart3, GitBranch, MessageSquare, BookOpen, FileText, PieChart } from 'lucide-react';
 import { formatDate } from '../utils/formatters';
+import type { Citation, Experiment, ExperimentRawData, Metric, Report, TraceStep } from '../types/api';
+
+type TabId = 'metrics' | 'charts' | 'trace' | 'chat' | 'literature' | 'report';
+
+const tabs: { id: TabId; label: string; icon: typeof BarChart3 }[] = [
+  { id: 'metrics', label: 'Metrics', icon: BarChart3 },
+  { id: 'charts', label: 'Charts', icon: PieChart },
+  { id: 'trace', label: 'Agent Trace', icon: GitBranch },
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'literature', label: 'Literature', icon: BookOpen },
+  { id: 'report', label: 'Report', icon: FileText },
+];
 
 export default function ExperimentPage() {
-  const { id } = useParams();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [experiment, setExperiment] = useState(null);
-  const [metrics, setMetrics] = useState([]);
-  const [trace, setTrace] = useState([]);
-  const [report, setReport] = useState(null);
-  const [citations, setCitations] = useState([]);
-  const [rawData, setRawData] = useState(null);
-  const [activeTab, setActiveTab] = useState('metrics');
+  const [experiment, setExperiment] = useState<Experiment | null>(null);
+  const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [trace, setTrace] = useState<TraceStep[]>([]);
+  const [report, setReport] = useState<Report | null>(null);
+  const [citations, setCitations] = useState<Citation[]>([]);
+  const [rawData, setRawData] = useState<ExperimentRawData | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>('metrics');
 
   useEffect(() => {
-    let interval;
+    if (!id) return;
     const fetchData = async () => {
       try {
         const { data: exp } = await getExperiment(id);
@@ -41,7 +53,7 @@ export default function ExperimentPage() {
             getMetrics(id),
             getTrace(id),
             getReport(id).catch(() => ({ data: null })),
-            getCitations(id).catch(() => ({ data: [] })),
+            getCitations(id).catch(() => ({ data: [] as Citation[] })),
             getExperimentData(id).catch(() => ({ data: null })),
           ]);
           setMetrics(metricsRes.data);
@@ -49,21 +61,22 @@ export default function ExperimentPage() {
           setReport(reportRes.data);
           setCitations(Array.isArray(citationsRes.data) ? citationsRes.data : []);
           setRawData(dataRes.data);
-          if (interval) clearInterval(interval);
+          clearInterval(interval);
         } else if (exp.status === 'failed') {
-          if (interval) clearInterval(interval);
+          clearInterval(interval);
         }
       } catch {
         navigate('/');
       }
     };
 
+    const interval = setInterval(fetchData, 3000);
     fetchData();
-    interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [id, navigate]);
 
-  const handleBookmark = async (col, metric) => {
+  const handleBookmark = async (col: string, metric: string) => {
+    if (!id) return;
     try {
       await createBookmark({ experiment_id: id, metric_name: `${col}.${metric}`, note: '' });
       alert('Bookmarked!');
@@ -71,15 +84,6 @@ export default function ExperimentPage() {
   };
 
   if (!experiment) return <div className="loading-screen"><div className="spinner" /></div>;
-
-  const tabs = [
-    { id: 'metrics', label: 'Metrics', icon: BarChart3 },
-    { id: 'charts', label: 'Charts', icon: PieChart },
-    { id: 'trace', label: 'Agent Trace', icon: GitBranch },
-    { id: 'chat', label: 'Chat', icon: MessageSquare },
-    { id: 'literature', label: 'Literature', icon: BookOpen },
-    { id: 'report', label: 'Report', icon: FileText },
-  ];
 
   return (
     <div className="page">
@@ -111,7 +115,7 @@ export default function ExperimentPage() {
       {experiment.status === 'completed' && (
         <>
           <div className="tab-bar">
-            {tabs.map(tab => (
+            {tabs.map((tab) => (
               <button key={tab.id} className={`tab ${activeTab === tab.id ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab.id)}>
                 <tab.icon size={16} /> {tab.label}
               </button>
